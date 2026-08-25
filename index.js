@@ -152,7 +152,7 @@ client.on('messageCreate', async (message) => {
                     },
                     body: JSON.stringify({
                         model: AI_CONFIG.model,
-                        max_tokens: 5,
+                        max_tokens: 260,
                         messages: [{ role: 'user', content: 'ping' }]
                     })
                 });
@@ -251,7 +251,7 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model,
-                    max_tokens: 800,
+                    max_tokens: 3500,
                     messages: [
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: content }
