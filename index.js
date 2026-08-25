@@ -468,7 +468,7 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model,
-                    max_tokens: 800,
+                    max_tokens: 3200,
                     messages: [
                         {
                             role: 'system',
