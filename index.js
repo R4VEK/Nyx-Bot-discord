@@ -1,14 +1,24 @@
+require('dotenv').config(); // Load local environment variables
 const {
     Client,
     GatewayIntentBits,
     PermissionsBitField
 } = require('discord.js');
-
-const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
 const config = require('./config.json');
 
 // ─────────────────────────────────────────────
-// CLIENT
+// SUPABASE CLIENT INITIALIZATION
+// ─────────────────────────────────────────────
+
+// Initialize Supabase Client using the secure Service Role Key
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+);
+
+// ─────────────────────────────────────────────
+// CLIENT INITIALIZATION
 // ─────────────────────────────────────────────
 
 const client = new Client({
@@ -19,29 +29,6 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
-
-// ─────────────────────────────────────────────
-// FILES
-// ─────────────────────────────────────────────
-
-let warnings = {};
-
-if (fs.existsSync('./warnings.json')) {
-    try {
-        warnings = JSON.parse(
-            fs.readFileSync('./warnings.json', 'utf8')
-        );
-    } catch {
-        warnings = {};
-    }
-}
-
-function saveWarnings() {
-    fs.writeFileSync(
-        './warnings.json',
-        JSON.stringify(warnings, null, 4)
-    );
-}
 
 // ─────────────────────────────────────────────
 // PREFIX CONFIGURATION
@@ -84,6 +71,7 @@ function hasAnalysisPermission(member) {
 
 client.once('ready', () => {
     console.log(`╭・${client.user.tag} is online.`);
+    console.log(`╰・Database connected: Supabase.`);
     console.log(`╰・Default prefix: ${config.defaultPrefix}`);
 
     client.user.setActivity('El mejor server: https://discord.gg/HuZvvsE6Uh', {
@@ -139,7 +127,7 @@ client.on('messageCreate', async (message) => {
             atrReport += "✓ Mención / Trigger detectado\n";
             atrReport += "✓ Rol de analista autorizado\n";
             atrReport += (systemPrompt && systemPrompt.length > 0) ? "✓ SistemaPrompt cargado correctamente\n" : "✕ SistemaPrompt vacío o nulo\n";
-            atrReport += "— Memoria / Historial de Contexto (NO IMPLEMENTADO)\n";
+            atrReport += "✓ Memoria / BBDD Supabase conectada\n";
 
             // Ping the API to test connectivity and latency
             try {
@@ -152,7 +140,7 @@ client.on('messageCreate', async (message) => {
                     },
                     body: JSON.stringify({
                         model: AI_CONFIG.model,
-                        max_tokens: 260,
+                        max_tokens: 5,
                         messages: [{ role: 'user', content: 'ping' }]
                     })
                 });
@@ -224,7 +212,7 @@ client.on('messageCreate', async (message) => {
                 atpReport += `• Estado de procesamiento: ${apiStatus} (${pingTime}ms)\n`;
                 atpReport += `• Uso de Tokens: ${tokenUsage}\n`;
                 atpReport += `• Longitud de respuesta IA: ${responseLength} caracteres\n`;
-                atpReport += `• Fallos de contexto: — NO MEDIBLE (Sin memoria)\n`;
+                atpReport += `• Fallos de contexto: — (Analizando sesión actual)\n`;
                 atpReport += `• Anomalías detectadas: ${anomaly}\n\n`;
                 atpReport += `╰・Análisis completado.`;
 
@@ -236,13 +224,32 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // --- 2. NORMAL CONVERSATION MODE ---
-    // If it's not a command, not ATP, and not ATR, behave exactly as Nyx normally does.
+    // --- 2. NORMAL CONVERSATION MODE (WITH SUPABASE MEMORY) ---
     if (!isCommand && !isATPTrigger && !isATRTrigger && (isMentioned || isReply || mentionsName)) {
-        
         await message.channel.sendTyping(); 
 
         try {
+            // 1. Fetch User Memory from Supabase
+            const { data: memoryData, error: memError } = await supabase
+                .from('ai_memory')
+                .select('memory_data')
+                .eq('guild_id', message.guild.id)
+                .eq('user_id', message.author.id)
+                .single();
+            
+            if (memError && memError.code !== 'PGRST116') {
+                console.error('❌ Error fetching memory:', memError);
+            }
+
+            // 2. Build contextual prompt
+            let dynamicPrompt = systemPrompt + 
+                "\n\nNUEVA REGLA DE MEMORIA: Si el usuario te dice específicamente que recuerdes algo o te da un dato muy importante de él, responde normalmente pero AÑADE al final de tu respuesta EXACTAMENTE este formato secreto: [RECORDAR: resumen de lo que debo recordar]. No uses el formato si no es un dato importante para recordar.";
+            
+            if (memoryData && memoryData.memory_data) {
+                dynamicPrompt += `\n\nINFORMACIÓN PASADA DEL USUARIO QUE DEBES RECORDAR:\n${memoryData.memory_data}`;
+            }
+
+            // 3. Call AI
             const response = await fetch(AI_CONFIG.url, {
                 method: 'POST',
                 headers: {
@@ -251,9 +258,9 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model,
-                    max_tokens: 7000,
+                    max_tokens: 800,
                     messages: [
-                        { role: 'system', content: systemPrompt },
+                        { role: 'system', content: dynamicPrompt },
                         { role: 'user', content: content }
                     ]
                 })
@@ -269,11 +276,32 @@ client.on('messageCreate', async (message) => {
             }
             
             if (data.choices && data.choices.length > 0) {
-                const aiReply = data.choices[0].message.content;
+                let aiReply = data.choices[0].message.content;
                 
                 if (!aiReply) {
                     console.error('❌ ERROR: The AI returned an empty or null message.', data);
                     return message.reply("⛓️ ༊·˚ ༘ *Mmm... me he quedado en blanco, error interno.*");
+                }
+
+                // 4. Extract new memory to save
+                const memoryMatch = aiReply.match(/\[RECORDAR:\s*(.+?)\]/i);
+                if (memoryMatch) {
+                    const newMemoryText = memoryMatch[1];
+                    // Append to existing memory if it exists
+                    const finalMemory = (memoryData && memoryData.memory_data) 
+                        ? memoryData.memory_data + " | " + newMemoryText 
+                        : newMemoryText;
+
+                    // Upsert to Supabase
+                    await supabase.from('ai_memory').upsert({
+                        guild_id: message.guild.id,
+                        user_id: message.author.id,
+                        memory_data: finalMemory,
+                        updated_at: new Date()
+                    }, { onConflict: 'guild_id,user_id' });
+
+                    // Remove the hidden tag from the discord message
+                    aiReply = aiReply.replace(memoryMatch[0], '').trim();
                 }
 
                 return message.reply(aiReply);
@@ -534,116 +562,89 @@ client.on('messageCreate', async (message) => {
     }
 
     // ─────────────────────────────────────────
-    // WARN
-    // Usage: ?warn ID reason
+    // WARN (SUPABASE ENABLED)
     // ─────────────────────────────────────────
-
     if (command === 'warn') {
-
-        if (!message.member.permissions.has(
-            PermissionsBitField.Flags.ModerateMembers
-        )) {
-            return message.reply(
-                '†・No tienes permisos para utilizar este comando.'
-            );
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+            return message.reply('†・No tienes permisos para utilizar este comando.');
         }
 
         const userId = args.shift();
         const reason = args.join(' ');
 
-        if (!userId || !reason) {
-            return message.reply(
-                `†・Uso: \`${prefix}warn <ID> <razón>\``
-            );
-        }
+        if (!userId || !reason) return message.reply(`†・Uso: \`${prefix}warn <ID> <razón>\``);
+        if (!/^\d{17,20}$/.test(userId)) return message.reply('†・La ID proporcionada no es válida.');
 
-        if (!/^\d{17,20}$/.test(userId)) {
-            return message.reply(
-                '†・La ID proporcionada no es válida.'
-            );
-        }
-
-        let member;
-
+        let targetMember;
         try {
-            member = await message.guild.members.fetch(userId);
+            targetMember = await message.guild.members.fetch(userId);
         } catch {
-            return message.reply(
-                '†・No he encontrado a ese usuario en el servidor.'
-            );
+            return message.reply('†・No he encontrado a ese usuario en el servidor.');
         }
 
-        // Initialize warnings object for the server if it doesn't exist
-        if (!warnings[message.guild.id]) {
-            warnings[message.guild.id] = {};
+        // 1. Insert into Supabase
+        const { error: insertError } = await supabase
+            .from('warnings')
+            .insert([{
+                guild_id: message.guild.id,
+                user_id: userId,
+                username: targetMember.user.tag,
+                reason: reason,
+                moderator_id: message.author.id
+            }]);
+
+        if (insertError) {
+            console.error('❌ Supabase Warn Insert Error:', insertError);
+            return message.reply('†・Error en la base de datos. No se pudo registrar la advertencia.');
         }
 
-        // Initialize warnings array for the user if it doesn't exist
-        if (!warnings[message.guild.id][userId]) {
-            warnings[message.guild.id][userId] = [];
-        }
+        // 2. Count total warnings for this user in this guild
+        const { data: countData, error: countError } = await supabase
+            .from('warnings')
+            .select('id', { count: 'exact' })
+            .eq('guild_id', message.guild.id)
+            .eq('user_id', userId);
 
-        // Push the new warning data
-        warnings[message.guild.id][userId].push({
-            reason: reason,
-            moderator: message.author.id,
-            date: new Date().toISOString()
-        });
+        const warnCount = countError ? '?' : countData.length;
 
-        saveWarnings();
-
-        const warnCount = warnings[message.guild.id][userId].length;
-
+        // 3. Send DM and Reply
         try {
-            await member.send(
-                `⚠️・Has recibido una advertencia en **${message.guild.name}**.\n` +
-                `╰・${reason}\n\n` +
-                `⚠️・Advertencias actuales: **${warnCount}**`
-            );
+            await targetMember.send(`⚠️・Has recibido una advertencia en **${message.guild.name}**.\n╰・${reason}\n\n⚠️・Advertencias actuales: **${warnCount}**`);
         } catch {
-            console.log(`Could not send DM to ${member.user.tag}`);
+            console.log(`Could not send DM to ${targetMember.user.tag}`);
         }
 
-        return message.reply(
-            `⚠️・Advertencia para <@${userId}>\n` +
-            `╰・${reason} ・ **${warnCount} warns**`
-        );
+        return message.reply(`⚠️・Advertencia registrada para <@${userId}>\n╰・${reason} ・ **${warnCount} warns**`);
     }
 
     // ─────────────────────────────────────────
-    // WARNINGS
+    // WARNINGS (CHECK VIA SUPABASE)
     // ─────────────────────────────────────────
-
     if (command === 'warnings' || command === 'warns') {
-
-        if (
-            !message.member.permissions.has(
-                PermissionsBitField.Flags.ModerateMembers
-            )
-        ) {
-            return message.reply(
-                '†・No tienes permisos para utilizar este comando.'
-            );
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+            return message.reply('†・No tienes permisos para utilizar este comando.');
         }
 
         const member = message.mentions.members.first();
+        if (!member) return message.reply(`†・Uso: \`${prefix}warnings @usuario\``);
 
-        if (!member) {
-            return message.reply(
-                `†・Uso: \`${prefix}warnings @usuario\``
-            );
+        const { data: userWarnings, error } = await supabase
+            .from('warnings')
+            .select('reason')
+            .eq('guild_id', message.guild.id)
+            .eq('user_id', member.id)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('❌ Supabase Fetch Warns Error:', error);
+            return message.reply('†・No pude conectar con los archivos del servidor.');
         }
 
-        const userWarnings = warnings[message.guild.id]?.[member.id] || [];
-
-        if (userWarnings.length === 0) {
-            return message.reply(
-                `✦・<@${member.id}> no tiene advertencias.`
-            );
+        if (!userWarnings || userWarnings.length === 0) {
+            return message.reply(`✦・<@${member.id}> no tiene advertencias en este servidor.`);
         }
 
         let text = `⚠️・<@${member.id}> tiene **${userWarnings.length} warns**.\n`;
-
         userWarnings.forEach((warn, index) => {
             text += `╰・**${index + 1}.** ${warn.reason}\n`;
         });
@@ -652,38 +653,28 @@ client.on('messageCreate', async (message) => {
     }
 
     // ─────────────────────────────────────────
-    // CLEARWARNS
+    // CLEARWARNS (SUPABASE ENABLED)
     // ─────────────────────────────────────────
-
     if (command === 'clearwarns') {
-
-        if (
-            !message.member.permissions.has(
-                PermissionsBitField.Flags.ModerateMembers
-            )
-        ) {
-            return message.reply(
-                '†・No tienes permisos para utilizar este comando.'
-            );
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+            return message.reply('†・No tienes permisos para utilizar este comando.');
         }
 
         const member = message.mentions.members.first();
+        if (!member) return message.reply(`†・Uso: \`${prefix}clearwarns @usuario\``);
 
-        if (!member) {
-            return message.reply(
-                `†・Uso: \`${prefix}clearwarns @usuario\``
-            );
+        const { error } = await supabase
+            .from('warnings')
+            .delete()
+            .eq('guild_id', message.guild.id)
+            .eq('user_id', member.id);
+
+        if (error) {
+            console.error('❌ Supabase Clear Warns Error:', error);
+            return message.reply('†・Fallo interno. No se pudieron limpiar las advertencias.');
         }
 
-        // Delete user's warnings and save file
-        if (warnings[message.guild.id]) {
-            delete warnings[message.guild.id][member.id];
-            saveWarnings();
-        }
-
-        return message.reply(
-            `✦・Se han eliminado las advertencias de <@${member.id}>.`
-        );
+        return message.reply(`✦・Se han eliminado las advertencias de <@${member.id}> en este servidor.`);
     }
 
     // ─────────────────────────────────────────
