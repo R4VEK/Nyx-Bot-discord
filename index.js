@@ -106,9 +106,9 @@ client.on('messageCreate', async (message) => {
     // Remove mentions and trim to analyze the pure intent of the message
     const normalizedContent = content.replace(/<@[!&]?\d+>/g, '').trim().toLowerCase();
     
-    // Strict trigger: matches "atp nyx", "nyx / atp", "nyx atp", or just "atp" if directly mentioned/replied
-    const isATPTrigger = /^(nyx\s*\/?\s*atp|atp\s*\/?\s*nyx)$/.test(normalizedContent) || (normalizedContent === 'atp' && (isMentioned || isReply));
-    const isATRTrigger = /^(nyx\s*\/?\s*atr|atr\s*\/?\s*nyx)$/.test(normalizedContent) || (normalizedContent === 'atr' && (isMentioned || isReply));
+    // Strict trigger that allows text AFTER the trigger word (using \b for word boundary instead of $)
+    const isATPTrigger = /^(nyx\s*[,.\/-]?\s*atp|atp\s*[,.\/-]?\s*nyx)\b/.test(normalizedContent) || (normalizedContent.startsWith('atp') && (isMentioned || isReply));
+    const isATRTrigger = /^(nyx\s*[,.\/-]?\s*atr|atr\s*[,.\/-]?\s*nyx)\b/.test(normalizedContent) || (normalizedContent.startsWith('atr') && (isMentioned || isReply));
 
     if (!isCommand && (isATPTrigger || isATRTrigger)) {
         
@@ -129,10 +129,12 @@ client.on('messageCreate', async (message) => {
             atrReport += (systemPrompt && systemPrompt.length > 0) ? "✓ SistemaPrompt cargado correctamente\n" : "✕ SistemaPrompt vacío o nulo\n";
             atrReport += "✓ Memoria / BBDD Supabase conectada\n";
 
-            // Ping the API to test connectivity and latency
+            let aiGeneratedText = "";
+
+            // Call the API with the actual user prompt to fulfill the request and test latency
             try {
                 const startTime = Date.now();
-                const testResponse = await fetch(AI_CONFIG.url, {
+                const response = await fetch(AI_CONFIG.url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -140,24 +142,34 @@ client.on('messageCreate', async (message) => {
                     },
                     body: JSON.stringify({
                         model: AI_CONFIG.model,
-                        max_tokens: 5,
-                        messages: [{ role: 'user', content: 'ping' }]
+                        max_tokens: 800,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: content }
+                        ]
                     })
                 });
                 const pingTime = Date.now() - startTime;
 
-                if (testResponse.ok) {
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.choices && data.choices.length > 0) {
+                        aiGeneratedText = data.choices[0].message.content;
+                    }
                     atrReport += `✓ API NVIDIA accesible (${pingTime}ms)\n`;
                     atrReport += "✓ Gestión de respuestas (OK)\n";
                 } else {
-                    atrReport += `✕ Error en API NVIDIA: Código ${testResponse.status}\n`;
+                    atrReport += `✕ Error en API NVIDIA: Código ${response.status}\n`;
                 }
             } catch (error) {
                 atrReport += "✕ API inaccesible (Error crítico de red)\n";
             }
 
             atrReport += "\n╰・Diagnóstico completado.";
-            return message.reply(atrReport);
+            
+            // Send the AI's actual conversational response combined with the diagnostic report
+            const finalReply = aiGeneratedText ? `${aiGeneratedText}\n\n${atrReport}` : atrReport;
+            return message.reply(finalReply);
         }
 
         // ═════════ ATP MODE (PRUEBA - ANÁLISIS DE INTERACCIÓN) ═════════
@@ -167,6 +179,7 @@ client.on('messageCreate', async (message) => {
             let tokenUsage = "? NO MEDIBLE";
             let responseLength = 0;
             let anomaly = "Ninguna detectada";
+            let aiGeneratedText = "";
 
             try {
                 const response = await fetch(AI_CONFIG.url, {
@@ -192,10 +205,10 @@ client.on('messageCreate', async (message) => {
                     apiStatus = `✕ ERROR (${response.status})`;
                     anomaly = "Fallo en la conexión con la IA";
                 } else if (data.choices && data.choices.length > 0) {
-                    const aiReply = data.choices[0].message.content;
-                    responseLength = aiReply ? aiReply.length : 0;
+                    aiGeneratedText = data.choices[0].message.content;
+                    responseLength = aiGeneratedText ? aiGeneratedText.length : 0;
                     
-                    if (!aiReply) anomaly = "Respuesta generada vacía o nula";
+                    if (!aiGeneratedText) anomaly = "Respuesta generada vacía o nula";
                     
                     if (data.usage) {
                         tokenUsage = `Prompt: ${data.usage.prompt_tokens} | Total: ${data.usage.total_tokens}`;
@@ -216,7 +229,9 @@ client.on('messageCreate', async (message) => {
                 atpReport += `• Anomalías detectadas: ${anomaly}\n\n`;
                 atpReport += `╰・Análisis completado.`;
 
-                return message.reply(atpReport);
+                // Send the AI's actual conversational response combined with the diagnostic report
+                const finalReply = aiGeneratedText ? `${aiGeneratedText}\n\n${atpReport}` : atpReport;
+                return message.reply(finalReply);
 
             } catch (error) {
                 return message.reply(`✦・ATP iniciado para <@${message.author.id}>\n\n✕ Error Crítico: No se pudo realizar el análisis de carga.\n\n╰・Análisis cancelado.`);
