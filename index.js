@@ -273,7 +273,7 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model,
-                    max_tokens: 800,
+                    max_tokens: 5000,
                     messages: [
                         { role: 'system', content: dynamicPrompt },
                         { role: 'user', content: content }
