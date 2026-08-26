@@ -142,7 +142,7 @@ client.on('messageCreate', async (message) => {
                     },
                     body: JSON.stringify({
                         model: AI_CONFIG.model,
-                        max_tokens: 800,
+                        max_tokens: 5000,
                         messages: [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: content }
@@ -190,7 +190,7 @@ client.on('messageCreate', async (message) => {
                     },
                     body: JSON.stringify({
                         model: AI_CONFIG.model,
-                        max_tokens: 800,
+                        max_tokens: 5000,
                         messages: [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: content } // Send the user's actual ATP request to measure weight
