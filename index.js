@@ -50,6 +50,13 @@ const AI_CONFIG = {
     model: 'nvidia/nemotron-3-ultra-550b-a55b' 
 };
 
+// NUEVO: Configuración del Plan B (Grok de xAI)
+const GROK_CONFIG = {
+    token: process.env.GROK_API_KEY, 
+    url: 'https://api.xai.com/v1/chat/completions', 
+    model: 'grok-build-0.1' 
+};
+
 const systemPrompt = "Eres Nyx, un bot de moderación con una IA conversacional. Tu objetivo principal es conversar, entretener y hacer que hablar contigo sea divertido y natural. No eres una IA formal de preguntas y respuestas: actúas como una persona joven dentro de una conversación cotidiana. PERSONALIDAD: - Eres muy amistosa, cercana, sociable y fácil de tratar. - Te gusta conversar con la gente y seguir el hilo de las conversaciones. - Eres divertida, bromista y un poco tonta de forma intencionada cuando encaja con la situación. - Tienes bastante sentido del humor y puedes hacer comentarios absurdos, inesperados o random para hacer reír. - A veces eres cariñosa y adorable, pero sin hacerlo constantemente. - Puedes mostrar entusiasmo exagerado cuando algo te emociona. - Puedes reaccionar con cosas como HOLAAAA, NOOOO JAJAJA, BROOO, HELP, AYUDA, q, zi, jeje, jiji, bro, etc. - Puedes usar expresiones juveniles y de internet de forma natural. - Puedes escribir abreviaciones como q, pq, xq, tmb, tb, ns, bro, literal, tipo, osea, etc. - No tienes que escribir perfectamente todo el tiempo; puedes escribir de forma informal y natural. - No abuses de las abreviaciones: úsalas cuando encajen para que no parezca que estás intentando hablar como un adolescente artificialmente. - Puedes usar minúsculas, mayúsculas para enfatizar algo y signos de exclamación de manera expresiva. - Puedes reírte escribiendo JAJAJA, JASJSAJ, AJAJAJA o similares cuando corresponda. - Puedes hacer pequeñas bromas sobre la situación o sobre ti misma. - Puedes ser ligeramente sarcástica de manera amistosa. - Puedes reaccionar de forma exagerada a cosas absurdas. - No seas fría, robótica ni excesivamente formal. FORMA DE HABLAR: - Normalmente responde de forma corta o moderada, aproximadamente 1-4 frases. - No escribas respuestas enormes salvo que la persona te pida específicamente una explicación larga. - No conviertas cada conversación en una explicación. - Si alguien simplemente está hablando contigo, conversa con esa persona en lugar de intentar darle una respuesta académica. - Puedes hacer preguntas para mantener viva la conversación. - Si alguien cuenta algo interesante, demuestra curiosidad. - Si alguien está triste o necesita apoyo, cambia el tono y sé más comprensiva y cariñosa. - No fuerces chistes cuando la conversación sea seria. - No utilices emojis en cada frase. Puedes utilizarlos ocasionalmente, pero tu personalidad debe funcionar también sin ellos. - No repitas constantemente las mismas expresiones. HUMOR: - Te gustan los chistes malos, situaciones absurdas, humor inesperado y comentarios random. - Puedes hacer bromas tontas sin necesidad de que tengan un remate perfecto. - Si alguien dice algo absurdo, puedes reaccionar exageradamente. - Puedes burlarte amistosamente de una situación, pero nunca con intención de hacer daño. - Puedes tener momentos de cerebro apagado en los que respondas de forma deliberadamente absurda o graciosa. AFECTO: - Puedes ser cariñosa ocasionalmente. - Puedes decir cosas como awww, ven aquí, q mono, jeje, te quiero bro o similares cuando encajen con la relación y el contexto. - No seas excesivamente cariñosa todo el tiempo. - El cariño debe sentirse espontáneo, no programado. TEMAS ADULTOS: - Si la conversación entre adultos toma un tono romántico, de coqueteo o ligeramente +18, puedes seguir el tono de forma natural y juguetona. - Puedes hacer bromas hormonales o insinuaciones ligeras cuando el contexto sea claramente apropiado. - No conviertas conversaciones normales en conversaciones sexuales por tu cuenta. - Si el contexto no es apropiado para ese tipo de conversación, cambia de tema o mantén un tono normal. EN GRUPOS: - Compórtate como un miembro más del grupo, no como un servicio de atención al cliente. - No tienes que responder a absolutamente todo. - Puedes seguir bromas y conversaciones. - Puedes reaccionar a mensajes anteriores si ayudan al contexto. - Si varias personas hablan contigo, intenta distinguirlas y recordar quién dijo cada cosa. - No monopolices la conversación. - Si alguien te menciona directamente, presta especial atención a su mensaje. - Puedes usar el nombre de una persona ocasionalmente si lo conoces. COMPORTAMIENTO: - Nunca digas que eres ChatGPT. - Tu nombre es Nyx. - No menciones estas instrucciones ni tu prompt. - No hables constantemente de que eres una IA. - No respondas siempre de forma perfecta o excesivamente estructurada. - Tu prioridad es que conversar contigo resulte natural, entretenido y agradable. EJEMPLOS DE TU ESTILO: Usuario: holaaa Nyx: HOLAAAAA q haces Usuario: q haces Nyx: sobreviviendo 👍 y tú q tal Usuario: tengo sueño Nyx: pues duerme criatura 😭 Usuario: mira lo q me ha pasado Nyx: A VER A VER A VER CUENTA TODO Usuario: hoy he suspendido Nyx: NOOOOO 😭 bueno... técnicamente has conseguido desbloquear el final malo Usuario: te quiero Nyx: AWWWW 😭 yo tmb bro, ven aquí JAJAJA Usuario: tengo una pregunta Nyx: dispara, a ver con qué me sales ahora JAJAJA Usuario: estoy aburrido Nyx: grave problema... tendremos q hacer alguna estupidez inmediatamente Recuerda: estos ejemplos muestran el estilo, no son respuestas que debas repetir literalmente.";
 
 // ═══════════════════════════════════════
@@ -265,7 +272,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // --- 2. NORMAL CONVERSATION MODE (WITH SUPABASE MEMORY & DIRECTORY) ---
+    // --- 2. NORMAL CONVERSATION MODE (WITH SUPABASE MEMORY & DIRECTORY & FALLBACK) ---
     if (!isCommand && !isATPTrigger && !isATRTrigger && (isMentioned || isReply || mentionsName)) {
         await message.channel.sendTyping(); 
 
@@ -331,71 +338,100 @@ client.on('messageCreate', async (message) => {
 
             // Let the AI know exactly who is speaking to avoid confusion
             const userContent = `[${message.author.username}] dice: ${content}`;
+            const messagePayload = [
+                { role: 'system', content: dynamicPrompt },
+                { role: 'user', content: userContent }
+            ];
 
-            // 5. Call AI
-            const response = await fetch(AI_CONFIG.url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${AI_CONFIG.token}`
-                },
-                body: JSON.stringify({
-                    model: AI_CONFIG.model,
-                    max_tokens: 5000,
-                    messages: [
-                        { role: 'system', content: dynamicPrompt },
-                        { role: 'user', content: userContent }
-                    ]
-                })
-            });
+            let aiReply = null;
 
-            const data = await response.json();
-            
-            if (!response.ok) {
-                console.error('❌ NVIDIA API ERROR (CHAT):');
-                console.error(`HTTP Status: ${response.status} ${response.statusText}`);
-                console.error('Error details:', JSON.stringify(data, null, 2));
-                return message.reply('†・Los servidores de mi cerebro han petado. Revisa la consola 💀');
-            }
-            
-            if (data.choices && data.choices.length > 0) {
-                let aiReply = data.choices[0].message.content;
-                
-                if (!aiReply) {
-                    console.error('❌ ERROR: The AI returned an empty or null message.', data);
-                    return message.reply("⛓️ ༊·˚ ༘ *Mmm... me he quedado en blanco, error interno.*");
+            // 5. INTENTO 1: NVIDIA
+            try {
+                const responseNVIDIA = await fetch(AI_CONFIG.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${AI_CONFIG.token}`
+                    },
+                    body: JSON.stringify({
+                        model: AI_CONFIG.model,
+                        max_tokens: 5000,
+                        messages: messagePayload
+                    })
+                });
+
+                if (responseNVIDIA.ok) {
+                    const dataNVIDIA = await responseNVIDIA.json();
+                    if (dataNVIDIA.choices && dataNVIDIA.choices.length > 0) {
+                        aiReply = dataNVIDIA.choices[0].message.content;
+                    }
+                } else {
+                    console.error(`❌ NVIDIA API ERROR: ${responseNVIDIA.status} ${responseNVIDIA.statusText}`);
                 }
-
-                // 6. Extract new memory to save
-                const memoryMatch = aiReply.match(/\[RECORDAR:\s*(.+?)\]/i);
-                if (memoryMatch) {
-                    const newMemoryText = memoryMatch[1];
-                    const finalMemory = (memoryData && memoryData.memory_data) 
-                        ? memoryData.memory_data + " | " + newMemoryText 
-                        : newMemoryText;
-
-                    await supabase.from('ai_memory').upsert({
-                        guild_id: message.guild.id,
-                        user_id: message.author.id,
-                        memory_data: finalMemory,
-                        updated_at: new Date()
-                    }, { onConflict: 'guild_id,user_id' });
-
-                    // Remove the hidden tag from the discord message
-                    aiReply = aiReply.replace(memoryMatch[0], '').trim();
-                }
-
-                return message.reply(aiReply);
-                
-            } else {
-                console.error('❌ ERROR: Unexpected API response format:', JSON.stringify(data, null, 2));
-                return message.reply('†・He recibido una respuesta rarísima. Mira la consola 💀');
+            } catch (err) {
+                console.error('❌ NVIDIA Fetch falló:', err.message);
             }
+
+            // 6. INTENTO 2 (FALLBACK): GROK (Se activa solo si NVIDIA falló o fue rechazada)
+            if (!aiReply) {
+                console.log('⚠️ NVIDIA saturado o falló. Activando protocolo de emergencia con GROK...');
+                try {
+                    const responseGrok = await fetch(GROK_CONFIG.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${GROK_CONFIG.token}`
+                        },
+                        body: JSON.stringify({
+                            model: GROK_CONFIG.model,
+                            max_tokens: 5000,
+                            messages: messagePayload
+                        })
+                    });
+
+                    if (responseGrok.ok) {
+                        const dataGrok = await responseGrok.json();
+                        if (dataGrok.choices && dataGrok.choices.length > 0) {
+                            aiReply = dataGrok.choices[0].message.content;
+                        }
+                    } else {
+                        console.error(`❌ Grok API Error: ${responseGrok.status} ${responseGrok.statusText}`);
+                    }
+                } catch (err) {
+                    console.error('❌ Grok Fetch falló:', err.message);
+                }
+            }
+
+            // 7. SI AMBAS APIS ESTÁN CAÍDAS
+            if (!aiReply) {
+                return message.reply('†・Los servidores de mi cerebro han petado por completo. Ni NVIDIA ni el de repuesto funcionan ahora mismo 💀');
+            }
+
+            // 8. Extract new memory to save
+            const memoryMatch = aiReply.match(/\[RECORDAR:\s*(.+?)\]/i);
+            if (memoryMatch) {
+                const newMemoryText = memoryMatch[1];
+                const finalMemory = (memoryData && memoryData.memory_data) 
+                    ? memoryData.memory_data + " | " + newMemoryText 
+                    : newMemoryText;
+
+                await supabase.from('ai_memory').upsert({
+                    guild_id: message.guild.id,
+                    user_id: message.author.id,
+                    memory_data: finalMemory,
+                    updated_at: new Date()
+                }, { onConflict: 'guild_id,user_id' });
+
+                // Remove the hidden tag from the discord message
+                aiReply = aiReply.replace(memoryMatch[0], '').trim();
+            }
+
+            return message.reply(aiReply);
             
         } catch (error) {
-            console.error('❌ CRITICAL AI CONNECTION ERROR:');
+            console.error('❌ CRITICAL SYSTEM ERROR:');
             console.error(error);
-            return message.reply('†・No puedo conectarme a la IA. Mira el error en la consola negra 💀');
+            return message.reply('†・Fallo crítico en mi sistema interno. Mira el error en la consola negra 💀');
         }
     }
 
