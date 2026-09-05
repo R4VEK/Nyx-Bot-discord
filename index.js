@@ -314,11 +314,43 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     
     // ═════════════════════════════════════════════════
+    // PARCHE CRÍTICO: VALIDACIÓN DE SERVIDOR Y MIEMBRO
+    // ═════════════════════════════════════════════════
+    
+    // Bloquear el comando si se intenta usar en Mensajes Directos
+    if (!interaction.inGuild()) {
+        if (interaction.isRepliable()) {
+            return interaction.reply({ 
+                content: '†・Este comando solo puede utilizarse dentro de un servidor.', 
+                ephemeral: true 
+            });
+        }
+        return;
+    }
+
+    // Forzar la descarga del perfil completo si Discord envió una versión "ligera" (Evita el Error .has is not a function)
+    let fullMember = interaction.member;
+    if (!fullMember || !fullMember.permissions || typeof fullMember.permissions.has !== 'function' || !fullMember.roles.cache) {
+        try {
+            fullMember = await interaction.guild.members.fetch(interaction.user.id);
+        } catch (error) {
+            console.error('Error al descargar el perfil completo del miembro:', error);
+            if (interaction.isRepliable()) {
+                return interaction.reply({ 
+                    content: '†・Hubo un error al cargar tus permisos en el servidor. Inténtalo de nuevo.', 
+                    ephemeral: true 
+                });
+            }
+            return;
+        }
+    }
+
+    // ═════════════════════════════════════════════════
     // EVENTO 1: COMANDO /MOD (PANEL INTERACTIVO)
     // ═════════════════════════════════════════════════
     
     if (interaction.isChatInputCommand() && interaction.commandName === 'mod') {
-        const hasPerms = await hasModPermission(interaction.member, interaction.guild.id);
+        const hasPerms = await hasModPermission(fullMember, interaction.guild.id);
         
         if (!hasPerms) {
             return interaction.reply({ 
