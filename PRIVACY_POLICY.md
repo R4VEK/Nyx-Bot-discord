@@ -55,7 +55,7 @@ Nyx does not intentionally send unrelated Discord messages to the AI service thr
 
 The current AI implementation sends the current user message together with Nyx's system instructions.
 
-The code provided for the current implementation does **not** show persistent storage of the user's previous AI conversations or a conversation database.
+The code provided for the current implementation does **not** show persistent storage of the user's previous AI conversations, only if the user says to store the information or if the content is relevant to the AI.
 
 Therefore, Nyx does not claim to provide persistent AI conversation memory unless such functionality is separately implemented.
 
