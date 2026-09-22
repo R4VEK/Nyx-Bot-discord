@@ -1082,7 +1082,7 @@ client.on('messageCreate', async (message) => {
                 }
             }
 
-            // Finalmente, se añade el mensaje actual del usuario
+            // Finalmente, se añade el mensaje actual del usuari
             const userContent = `[${message.author.username}] dice:${content}`;
             messagePayload.push({ role: 'user', content: userContent });
 
