@@ -13,7 +13,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
     "@tavily/core": "^0.7.7",
+    "canvas": "^3.2.3",
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2"
+  },
+  "allowScripts": {
+    "canvas@3.2.3": true
   }
 }

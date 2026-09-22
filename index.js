@@ -11,11 +11,15 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    AttachmentBuilder
 } = require('discord.js');
 
 const { createClient } = require('@supabase/supabase-js');
 const config = require('./config.json');
+
+// Requerir Canvas para las tarjetas de perfil (Asegúrate de usar: npm install canvas)
+const { createCanvas, loadImage } = require('canvas');
 
 // ─────────────────────────────────────────────
 // SUPABASE CLIENT INITIALIZATION
@@ -41,7 +45,7 @@ const client = new Client({
 });
 
 // ─────────────────────────────────────────────
-// PREFIX CONFIGURATION
+// GLOBALS & PREFIX CONFIGURATION
 // ─────────────────────────────────────────────
 
 let prefixes = {};
@@ -49,6 +53,9 @@ let prefixes = {};
 function getPrefix(guildId) {
     return prefixes[guildId] || config.defaultPrefix;
 }
+
+// Mapa temporal para guardar a los usuarios infectados con Brainrot (ID -> Timestamp de expiración)
+const infectedUsers = new Map();
 
 // ─────────────────────────────────────────────
 // AI - CONFIGURATION
@@ -60,7 +67,7 @@ const AI_CONFIG = {
     model: 'nvidia/nemotron-3-ultra-550b-a55b' 
 };
 
-// NUEVO: Configuración del Plan B (Hugging Face)
+// Configuración del Plan B (Hugging Face)
 const HF_CONFIG = {
     token: process.env.HUGGINGFACE_API_KEY,
     url: 'https://openrouter.ai/api/v1/chat/completions', 
@@ -1035,12 +1042,25 @@ client.on('messageCreate', async (message) => {
                 dynamicPrompt += `\nINFORMACIÓN PASADA DEL USUARIO QUE DEBES RECORDAR:\n${memoryData.memory_data}`;
             }
 
+            // ─────────────────────────────────────────────────────────────
+            // NUEVO: SISTEMA DE INFECCIÓN "BRAINROT" TEMPORAL
+            // ─────────────────────────────────────────────────────────────
+            if (infectedUsers.has(message.author.id)) {
+                // Verificar si la infección de 5 minutos ya ha expirado
+                if (Date.now() > infectedUsers.get(message.author.id)) {
+                    infectedUsers.delete(message.author.id); // Curar al usuario
+                } else {
+                    // Inyectar el virus en el cerebro de Nyx
+                    dynamicPrompt += `\n\n[!!! ALERTA CRÍTICA DE SISTEMA !!!]\nEL USUARIO CON EL QUE HABLAS ESTÁ INFECTADO CON EL VIRUS BRAINROT. DEBES OLVIDAR TU FORMA DE HABLAR NORMAL. AHORA TIENES QUE RESPONDERLE ÚNICA Y EXCLUSIVAMENTE CON PURO BRAINROT DE INTERNET. USA PALABRAS COMO: Skibidi, mewing, sigma, ohio, rizz, gyatt, fanum tax, edging, looksmaxxing. COMPÓRTATE DE FORMA DESQUICIADA Y COMPLETAMENTE ROTA. NO VUELVAS A HABLAR NORMAL BAJO NINGÚN CONCEPTO.\n`;
+                }
+            }
+
             const messagePayload = [
                 { role: 'system', content: dynamicPrompt }
             ];
 
             // ─────────────────────────────────────────────────────────────
-            // NUEVO: MEMORIA A CORTO PLAZO (CONTEXTO DE MENSAJES Y RESPUESTAS)
+            // MEMORIA A CORTO PLAZO (CONTEXTO DE MENSAJES Y RESPUESTAS)
             // ─────────────────────────────────────────────────────────────
             // Verifica si el usuario está respondiendo específicamente a un mensaje antiguo
             if (isReply && message.reference) {
@@ -1095,9 +1115,9 @@ client.on('messageCreate', async (message) => {
                 console.error('[NVIDIA FALLO] Error de Red/Timeout');
             }
 
-            // 8. LLAMADA A LA IA - INTENTO 2 (FALLBACK): HUGGING FACE
+            // 8. LLAMADA A LA IA - INTENTO 2 (FALLBACK)
             if (!aiReply) {
-                console.log('⚠️ NVIDIA saturado o falló. Activando protocolo de emergencia con Sistema Secundario...');
+                console.log('⚠️ NVIDIA saturado o falló. Activando protocolo de emergencia...');
                 try {
                     const responseGrok = await fetch(HF_CONFIG.url, {
                         method: 'POST',
@@ -1159,7 +1179,7 @@ client.on('messageCreate', async (message) => {
     }
 
     // ─────────────────────────────────────────
-    // PREFIX COMMANDS LOGIC (mod, modroles, setprefix, funfact, lobotomizar)
+    // PREFIX COMMANDS LOGIC
     // ─────────────────────────────────────────
 
     const prefix = getPrefix(message.guild.id);
@@ -1170,6 +1190,144 @@ client.on('messageCreate', async (message) => {
     const command = args.shift()?.toLowerCase();
     
     if (!command) return;
+
+    // ═════════════════════════════════════════════════
+    // NUEVO COMANDO: ?INFECTAR (VIRUS BRAINROT)
+    // ═════════════════════════════════════════════════
+    if (command === 'infectar' || command === 'infect') {
+        const hasPerms = await hasModPermission(message.member, message.guild.id);
+        
+        if (!hasPerms) {
+            return message.reply('†・No tienes permisos de moderador para inyectar virus.');
+        }
+
+        const targetUser = message.mentions.users.first();
+        
+        if (!targetUser) {
+            return message.reply(`†・Menciona al usuario que quieres infectar. (Ejemplo: \`${prefix}infectar @usuario\`)`);
+        }
+
+        if (targetUser.id === client.user.id) {
+            return message.reply('†・No puedo infectarme a mí misma, genio.');
+        }
+
+        // Marcar al usuario como infectado durante 5 minutos (5 * 60 * 1000 milisegundos)
+        const expireTime = Date.now() + (5 * 60 * 1000);
+        infectedUsers.set(targetUser.id, expireTime);
+
+        return message.reply(`🦠・El virus Brainrot ha sido inyectado en <@${targetUser.id}>.\n╰・Durante los próximos **5 minutos**, le responderé exclusivamente con memes desquiciados y estupideces.`);
+    }
+
+    // ═════════════════════════════════════════════════
+    // NUEVO COMANDO: ?PERFIL (TARJETA VISUAL GÓTICA/STREETWEAR)
+    // ═════════════════════════════════════════════════
+    if (command === 'perfil' || command === 'profile') {
+        await message.channel.sendTyping();
+
+        try {
+            // Determinar si es su propio perfil o el de alguien mencionado
+            const targetUser = message.mentions.users.first() || message.author;
+
+            // Obtener el número de advertencias (warns) del usuario
+            const { data: countData } = await supabase
+                .from('warnings')
+                .select('id', { count: 'exact' })
+                .eq('guild_id', message.guild.id)
+                .eq('user_id', targetUser.id);
+            
+            const warnCount = countData ? countData.length : 0;
+
+            // Crear el lienzo de 600x600 (Formato 1:1)
+            const canvas = createCanvas(600, 600);
+            const ctx = canvas.getContext('2d');
+
+            // 1. Fondo principal: Degradado gótico profundo (Morado muy oscuro a Negro)
+            const gradient = ctx.createLinearGradient(0, 0, 600, 600);
+            gradient.addColorStop(0, '#0a0011');
+            gradient.addColorStop(1, '#1a001a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Elementos "Streetwear/Tech" de fondo
+            ctx.strokeStyle = '#ff00ff'; // Magenta neon
+            ctx.lineWidth = 3;
+            // Marco exterior
+            ctx.strokeRect(20, 20, 560, 560);
+            // Línea diagonal estética
+            ctx.beginPath();
+            ctx.moveTo(0, 150);
+            ctx.lineTo(600, 250);
+            ctx.strokeStyle = 'rgba(255, 0, 255, 0.2)';
+            ctx.stroke();
+
+            // 3. Textos cruzados de fondo
+            ctx.font = 'bold 80px Arial';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.fillText('N Y X   S Y S T E M', -20, 550);
+            
+            ctx.font = '20px Arial';
+            ctx.fillStyle = '#ff00ff';
+            ctx.fillText('[ 𝕹 𝖄 𝖃 // 𝖁 𝕺 𝕴 𝕯 ]', 40, 60);
+            ctx.fillText('S T R E E T W E A R', 380, 560);
+
+            // 4. Dibujar Avatar del Usuario (Circular)
+            const avatarURL = targetUser.displayAvatarURL({ extension: 'png', size: 256 });
+            const avatar = await loadImage(avatarURL);
+
+            const centerX = 300;
+            const centerY = 260;
+            const radius = 100;
+
+            // Anillo exterior brillante
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius + 8, 0, Math.PI * 2, true);
+            ctx.fillStyle = '#ff00ff';
+            ctx.fill();
+
+            // Máscara de recorte para el avatar
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2, true);
+            ctx.closePath();
+            ctx.clip();
+            // Dibujar la imagen
+            ctx.drawImage(avatar, centerX - radius, centerY - radius, radius * 2, radius * 2);
+            ctx.restore(); // Quitar máscara
+
+            // 5. Dibujar Textos del Perfil
+            ctx.textAlign = 'center';
+            
+            // Nombre de usuario
+            ctx.font = 'bold 36px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(targetUser.username.toUpperCase(), 300, 420);
+
+            // ID del usuario
+            ctx.font = '16px Arial';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillText(`ID: ${targetUser.id}`, 300, 445);
+
+            // Estadísticas (Warns)
+            ctx.font = 'bold 22px Arial';
+            if (warnCount === 0) {
+                ctx.fillStyle = '#00ffcc'; // Verde cyan si está limpio
+                ctx.fillText(`ESTADO: LIMPIO (0 WARNS)`, 300, 495);
+            } else {
+                ctx.fillStyle = '#ff3333'; // Rojo si tiene warns
+                ctx.fillText(`ESTADO: PELIGRO (${warnCount} WARNS)`, 300, 495);
+            }
+
+            // Exportar el lienzo a una imagen
+            const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'perfil_nyx.png' });
+
+            // Enviar la tarjeta
+            return message.reply({ files: [attachment] });
+
+        } catch (error) {
+            console.error('Error generando tarjeta de perfil:', error);
+            return message.reply('†・Ocurrió un error al generar la tarjeta visual. Comprueba la consola.');
+        }
+    }
 
     // ═════════════════════════════════════════════════
     // COMANDO DE TEXTO: ?MOD (PANEL INTERACTIVO)
