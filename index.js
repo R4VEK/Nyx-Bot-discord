@@ -60,10 +60,11 @@ const AI_CONFIG = {
     model: 'nvidia/nemotron-3-ultra-550b-a55b' 
 };
 
-const GROK_CONFIG = {
-    token: process.env.GROK_API_KEY, 
+// NUEVO: Configuración del Plan B (Hugging Face)
+const HF_CONFIG = {
+    token: process.env.HUGGINGFACE_API_KEY,
     url: 'https://openrouter.ai/api/v1/chat/completions', 
-    model: 'thinkingmachines/inkling:free'
+    model: 'inclusionai/ling-3.0-flash-vl:free'
 };
 
 // Se ha expandido el prompt para mayor claridad y mantenimiento
@@ -467,7 +468,7 @@ client.on('interactionCreate', async interaction => {
     
     if (interaction.isChatInputCommand() && interaction.commandName === 'modroles') {
         
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        if (!fullMember.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return interaction.reply({ 
                 content: '†・Solo los administradores o dueños del servidor pueden configurar esto.', 
                 ephemeral: true 
@@ -539,7 +540,7 @@ client.on('interactionCreate', async interaction => {
     // ═════════════════════════════════════════════════
     
     if (interaction.isButton()) {
-        const hasPerms = await hasModPermission(interaction.member, interaction.guild.id);
+        const hasPerms = await hasModPermission(fullMember, interaction.guild.id);
         
         if (!hasPerms) {
             return interaction.reply({ 
@@ -568,14 +569,14 @@ client.on('interactionCreate', async interaction => {
 
             if (!userWarnings || userWarnings.length === 0) {
                 return interaction.reply({ 
-                    content: `✦・<@${targetId}> no tiene warns en este servidor.`, 
+                    content: `✦・<@${targetId}> no tiene advertencias en este servidor.`, 
                     ephemeral: true 
                 });
             }
 
             let text = `⚠️・**Historial de <@${targetId}> (${userWarnings.length} warns)**\n`;
             userWarnings.forEach((warn, index) => {
-                text += `╰ **${index + 1}.** ${warn.reason} \n`;
+                text += `╰ **${index + 1}.**${warn.reason} \n`;
             });
 
             return interaction.reply({ 
@@ -602,7 +603,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             return interaction.reply({ 
-                content: `✦・Se han eliminado todos los warns de <@${targetId}>.`, 
+                content: `✦・Se han eliminado todas las advertencias de <@${targetId}>.`, 
                 ephemeral: false 
             });
         }
@@ -712,7 +713,7 @@ client.on('interactionCreate', async interaction => {
         // ACCIÓN: KICK
         // -------------------------------------------------
         if (type === 'kick') {
-            if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
+            if (!fullMember.permissions.has(PermissionsBitField.Flags.KickMembers)) {
                 return interaction.reply({ 
                     content: '†・No tienes permisos de Discord para kickear miembros.', 
                     ephemeral: true
@@ -741,7 +742,7 @@ client.on('interactionCreate', async interaction => {
         // ACCIÓN: BAN
         // -------------------------------------------------
         if (type === 'ban') {
-            if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+            if (!fullMember.permissions.has(PermissionsBitField.Flags.BanMembers)) {
                 return interaction.reply({ 
                     content: '†・No tienes permisos de Discord para banear miembros.', 
                     ephemeral: true
@@ -770,7 +771,7 @@ client.on('interactionCreate', async interaction => {
         // ACCIÓN: UNBAN
         // -------------------------------------------------
         if (type === 'unban') {
-            if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+            if (!fullMember.permissions.has(PermissionsBitField.Flags.BanMembers)) {
                 return interaction.reply({ 
                     content: '†・No tienes permisos de Discord para desbanear miembros.', 
                     ephemeral: true
@@ -936,7 +937,7 @@ client.on('messageCreate', async (message) => {
                     }
                     
                     if (data.usage) {
-                        tokenUsage = `Prompt: ${data.usage.prompt_tokens} | Total: ${data.usage.total_tokens}`;
+                        tokenUsage = `Prompt: ${data.usage.prompt_tokens} \vert{} Total:${data.usage.total_tokens}`;
                         if (data.usage.total_tokens > 2500) {
                             anomaly = "⚠ Límite excedido (>2.5k tokens)";
                         }
@@ -946,7 +947,7 @@ client.on('messageCreate', async (message) => {
                     anomaly = "Estructura de payload desconocida";
                 }
 
-                let atpReport = `✦・ATP iniciado para <@${message.author.id}> ${isOPR ? '`[OPR LEVEL]`' : '`[PR LEVEL]`'}\n\n`;
+                let atpReport = `✦・ATP iniciado para <@${message.author.id}>${isOPR ? '`[OPR LEVEL]`' : '`[PR LEVEL]`'}\n\n`;
                 atpReport += `**Análisis de Interacción:**\n`;
                 atpReport += `• Peso del mensaje: ${content.length} caracteres\n`;
                 atpReport += `• Estado: ${apiStatus} (${pingTime}ms)\n`;
@@ -1003,7 +1004,7 @@ client.on('messageCreate', async (message) => {
                 .order('last_seen', { ascending: false })
                 .limit(30);
             
-            const directoryText = knownUsers ? knownUsers.map(u => `${u.username} (ID: ${u.user_id})`).join(', ') : '';
+            const directoryText = knownUsers ? knownUsers.map(u => `${u.username} (ID:${u.user_id})`).join(', ') : '';
             
             // 4. Verificación de Permisos de Memoria
             const canForceMemory = await hasMemoryPermission(message.member, message.guild.id);
@@ -1022,7 +1023,7 @@ client.on('messageCreate', async (message) => {
             dynamicPrompt += `- Cantidad total de miembros: ${memberCount}\n`;
             dynamicPrompt += `- Lista de miembros (en caché): ${cachedMembers}\n`;
             dynamicPrompt += `- Directorio de usuarios conocidos: ${directoryText}\n`;
-            dynamicPrompt += `- Tu interlocutor actual es: ${message.author.username} (ID: ${message.author.id}).\n`;
+            dynamicPrompt += `- Tu interlocutor actual es: ${message.author.username} (ID:${message.author.id}).\n`;
             dynamicPrompt += `- Para mencionar a alguien usa el formato de Discord: <@ID_DEL_USUARIO>.\n\n`;
 
             dynamicPrompt += `--- MÓDULO DE MEMORIA ---\n`;
@@ -1034,12 +1035,36 @@ client.on('messageCreate', async (message) => {
                 dynamicPrompt += `\nINFORMACIÓN PASADA DEL USUARIO QUE DEBES RECORDAR:\n${memoryData.memory_data}`;
             }
 
-            const userContent = `[${message.author.username}] dice: ${content}`;
-            
             const messagePayload = [
-                { role: 'system', content: dynamicPrompt }, 
-                { role: 'user', content: userContent }
+                { role: 'system', content: dynamicPrompt }
             ];
+
+            // ─────────────────────────────────────────────────────────────
+            // NUEVO: MEMORIA A CORTO PLAZO (CONTEXTO DE MENSAJES Y RESPUESTAS)
+            // ─────────────────────────────────────────────────────────────
+            // Verifica si el usuario está respondiendo específicamente a un mensaje antiguo
+            if (isReply && message.reference) {
+                try {
+                    const repliedMsg = await message.channel.messages.fetch(message.reference.messageId);
+                    
+                    if (repliedMsg && repliedMsg.author.id === client.user.id) {
+                        // Si el mensaje es de la propia Nyx, se añade a la memoria como si lo acabara de decir ella
+                        messagePayload.push({ role: 'assistant', content: repliedMsg.content });
+                    } else if (repliedMsg) {
+                        // Si estás respondiendo a un tercero, Nyx lee lo que dijo esa otra persona para tener el chisme completo
+                        messagePayload.push({ 
+                            role: 'user', 
+                            content: `[Contexto - ${message.author.username} está respondiendo a este mensaje de ${repliedMsg.author.username}]:${repliedMsg.content}` 
+                        });
+                    }
+                } catch (error) {
+                    console.error('El mensaje de referencia ha sido borrado o no se puede cargar.');
+                }
+            }
+
+            // Finalmente, se añade el mensaje actual del usuario
+            const userContent = `[${message.author.username}] dice:${content}`;
+            messagePayload.push({ role: 'user', content: userContent });
 
             let aiReply = null;
 
@@ -1070,18 +1095,18 @@ client.on('messageCreate', async (message) => {
                 console.error('[NVIDIA FALLO] Error de Red/Timeout');
             }
 
-            // 8. LLAMADA A LA IA - INTENTO 2 (FALLBACK): GROK
+            // 8. LLAMADA A LA IA - INTENTO 2 (FALLBACK): HUGGING FACE
             if (!aiReply) {
                 console.log('⚠️ NVIDIA saturado o falló. Activando protocolo de emergencia con Sistema Secundario...');
                 try {
-                    const responseGrok = await fetch(GROK_CONFIG.url, {
+                    const responseGrok = await fetch(HF_CONFIG.url, {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json', 
-                            'Authorization': `Bearer ${GROK_CONFIG.token}` 
+                            'Authorization': `Bearer ${HF_CONFIG.token}` 
                         },
                         body: JSON.stringify({ 
-                            model: GROK_CONFIG.model, 
+                            model: HF_CONFIG.model, 
                             max_tokens: 5000, 
                             messages: messagePayload 
                         })
@@ -1384,7 +1409,7 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model, 
-                    max_tokens: 2500,
+                    max_tokens: 800,
                     messages: [
                         { 
                             role: 'system', 
@@ -1425,7 +1450,7 @@ client.on('messageCreate', async (message) => {
                 },
                 body: JSON.stringify({
                     model: AI_CONFIG.model, 
-                    max_tokens: 1250,
+                    max_tokens: 450,
                     messages: [
                         { 
                             role: 'system', 
