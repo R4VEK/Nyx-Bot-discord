@@ -19,7 +19,12 @@ const { createClient } = require('@supabase/supabase-js');
 const config = require('./config.json');
 
 // Requerir Canvas para las tarjetas de perfil (Asegúrate de usar: npm install canvas)
-const { createCanvas, loadImage } = require('canvas');
+const path = require('path');
+const { createCanvas, loadImage, registerFont } = require('canvas');
+
+const fontPath = path.join(__dirname, 'Mirage final.ttf');
+console.log('➜ Cargando fuente desde:', fontPath);
+registerFont(fontPath, { family: 'LetraGotica' });
 
 // ─────────────────────────────────────────────
 // SUPABASE CLIENT INITIALIZATION
@@ -1261,11 +1266,11 @@ client.on('messageCreate', async (message) => {
             ctx.stroke();
 
             // 3. Textos cruzados de fondo
-            ctx.font = 'bold 80px Arial';
+            ctx.font = '80px LetraGotica';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
             ctx.fillText('N Y X   S Y S T E M', -20, 550);
             
-            ctx.font = '20px Arial';
+            ctx.font = '20px LetraGotica';
             ctx.fillStyle = '#ff00ff';
             ctx.fillText('[ 𝕹 𝖄 𝖃 // 𝖁 𝕺 𝕴 𝕯 ]', 40, 60);
             ctx.fillText('S T R E E T W E A R', 380, 560);
@@ -1298,17 +1303,17 @@ client.on('messageCreate', async (message) => {
             ctx.textAlign = 'center';
             
             // Nombre de usuario
-            ctx.font = 'bold 36px Arial';
+            ctx.font = '36px LetraGotica';
             ctx.fillStyle = '#ffffff';
             ctx.fillText(targetUser.username.toUpperCase(), 300, 420);
 
             // ID del usuario
-            ctx.font = '16px Arial';
+            ctx.font = '16px LetraGotica';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.fillText(`ID: ${targetUser.id}`, 300, 445);
 
             // Estadísticas (Warns)
-            ctx.font = 'bold 22px Arial';
+            ctx.font = '22px LetraGotica';
             if (warnCount === 0) {
                 ctx.fillStyle = '#00ffcc'; // Verde cyan si está limpio
                 ctx.fillText(`ESTADO: LIMPIO (0 WARNS)`, 300, 495);
